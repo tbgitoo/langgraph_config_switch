@@ -1,39 +1,35 @@
 # langgraph_config_switch
 
-A tiny helper library for LangGraph/LangChain projects that need a minimal
-local-vs-cloud LLM switch based on a dict config.
+Minimal dict-based LLM selection for LangChain/LangGraph, with an internal
+preset registry and string-only selectors.
 
-Public API:
+## Public API (stable)
 - `get_llm(config_llm, format=None, temperature=0.2)`
 - `build_runtime(config_llm, temperature=0.2, format=None, callbacks=())`
 
-Supported providers via `config_llm["LLM_PROVIDER"]`:
-- `"ollama"`
-- `"openai"`
+## Optional helpers (internal, not exported)
+- `resolve_config(llm="ollama", tracer="langfuse", profile="local")`
+- `PRESETS` in `presets.py`
 
-Usage (Ollama local)
+## Quick usage (recommended)
 
-from langgraph_config_switch import get_llm, build_runtime
-
-config_llm = {
-  "LLM_PROVIDER": "ollama",
-  "OLLAMA_MODEL": "llama3.1:8b",
-  "OLLAMA_BASE_URL": "http://localhost:11434",
-}
-
-llm = get_llm(config_llm, format="json", temperature=0.2)
-rt = build_runtime(config_llm, temperature=0.2, format="json")
-print(rt.provider_label)
-
-
-Usage (Open ai)
-
+```python
+from langgraph_config_switch.resolve import resolve_config
 from langgraph_config_switch import build_runtime
 
-config_llm = {
-  "LLM_PROVIDER": "openai",
-  "OPENAI_MODEL": "gpt-5.4-nano",
-  "OPENAI_API_KEY": "YOUR_KEY",
-}
+cfg = resolve_config(llm="ollama", tracer="langfuse", profile="local")
+runtime = build_runtime(cfg["config_llm"], callbacks=cfg["callbacks"], temperature=0.2)
 
-rt = build_runtime(config_llm, temperature=0.2)
+llm = runtime.llm
+callbacks = runtime.callbacks
+print(runtime.provider_label)
+
+```
+
+## Notes
+
+Presets never hardcode secrets. Keys are injected from environment variables.
+Tracing callbacks are optional; if not configured, callbacks=().
+
+### License
+GPL-3.0-only. See LICENSE.

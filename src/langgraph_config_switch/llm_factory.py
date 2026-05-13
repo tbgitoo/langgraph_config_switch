@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Union
 
 from langchain_openai import ChatOpenAI
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 
 
 def get_llm(
@@ -49,7 +49,6 @@ def get_llm(
             if k not in config:
                 raise KeyError(f"Missing required key for openai: {k}")
 
-        # langchain-openai uses `api_key` in recent versions.
         return ChatOpenAI(
             model=config["OPENAI_MODEL"],
             temperature=temperature,

@@ -11,10 +11,10 @@ class LLMRuntime:
     """
     Minimal runtime container.
 
-    - config_llm: original dict config (useful for auditing/debugging)
+    - config_llm: original dict config (for audit/debug)
     - llm: instantiated ChatOpenAI or ChatOllama
-    - callbacks: optional callback handlers (e.g., Langfuse handler(s))
-    - provider_label: helpful string like "ollama:llama3.1:8b"
+    - callbacks: optional callback handlers (e.g., Langfuse/LangSmith)
+    - provider_label: e.g. "ollama:llama3.1:8b"
     """
     config_llm: Dict[str, Any]
     llm: Any
@@ -31,13 +31,6 @@ def build_runtime(
 ) -> LLMRuntime:
     """
     Build a minimal runtime from a dict config.
-
-    Intentionally does NOT:
-      - load dotenv
-      - decide local vs cloud
-      - build Langfuse handlers
-
-    Those belong in your notebook/FastAPI entrypoint or another helper layer.
     """
     llm = get_llm(config_llm, format=format, temperature=temperature)
 

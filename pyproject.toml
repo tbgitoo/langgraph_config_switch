@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langgraph-config-switch"
-version = "0.1.0"
-description = "Minimal dict-based LLM config switch + runtime builder (Ollama/OpenAI) for LangGraph/LangChain"
+version = "0.2.0"
+description = "Minimal dict-based LLM switch + runtime builder, with internal presets and string-only selectors"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-only" }
@@ -24,13 +24,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=7.0",
-]
+dev = ["pytest>=7.0"]
 
 [project.urls]
-Repository = "https://github.com/<YOUR_GITHUB_ORG_OR_USER>/langgraph_config_switch"
-Issues = "https://github.com/<YOUR_GITHUB_ORG_OR_USER>/langgraph_config_switch/issues"
+Repository = "https://github.com/tbgitoo/langgraph_config_switch"
+Issues = "https://github.com/tbgitoo/langgraph_config_switch/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
