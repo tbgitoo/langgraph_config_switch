@@ -16,6 +16,15 @@ def _clone(d: Dict[str, Any]) -> Dict[str, Any]:
     return dict(d)
 
 
+def _get_first_env(*names: str) -> Optional[str]:
+    """Return the first non-empty environment variable among names."""
+    for n in names:
+        v = os.getenv(n)
+        if v:
+            return v
+    return None
+
+
 def _resolve_llm_preset_id(llm: Optional[str], profile: str) -> str:
     """
     Resolve a user-facing llm switch/preset into a concrete preset id.
@@ -78,6 +87,70 @@ def _inject_openai_key(config_llm: Dict[str, Any], openai_api_key: Optional[str]
     config_llm["OPENAI_API_KEY"] = key
 
 
+def _import_langchain_tracer():
+    """
+    Import LangChainTracer from whichever path exists in the installed LangChain version.
+    Localized import to keep optional deps out of import-time.
+    """
+    try:
+        from langchain.callbacks.tracers.langchain import LangChainTracer  # type: ignore
+        return LangChainTracer
+    except Exception:
+        pass
+
+    try:
+        from langchain_core.tracers.langchain import LangChainTracer  # type: ignore
+        return LangChainTracer
+    except Exception:
+        pass
+
+    return None
+
+
+def _init_langfuse_client(
+    *,
+    host: Optional[str],
+    public_key: Optional[str],
+    secret_key: Optional[str],
+    strict: bool,
+) -> bool:
+    """
+    Initialize Langfuse client WITHOUT mutating os.environ.
+
+    Strategy:
+      - If explicit args provided -> initialize using constructor arguments.
+      - Else -> rely on whatever the user already set in the environment (.env loaded etc.).
+    Langfuse integration supports constructor-argument configuration. 【2-a1d402】【3-804239】
+    """
+    try:
+        from langfuse import Langfuse  # type: ignore
+    except Exception as e:
+        if strict:
+            raise RuntimeError("Langfuse selected but 'langfuse' package is not importable.") from e
+        return False
+
+    # If user provided explicit overrides, use them.
+    if host or public_key or secret_key:
+        if not (host and public_key and secret_key):
+            if strict:
+                raise RuntimeError(
+                    "Langfuse selected but incomplete credentials provided. "
+                    "Need host + public_key + secret_key (or provide none and rely on env)."
+                )
+            return False
+
+        # No env mutation: direct constructor args.
+        Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+        return True
+
+    # No explicit args: assume user configured env vars themselves.
+    # Constructing without args is not required; CallbackHandler will call get_client().
+    # We just return True to proceed.
+    return True
+
+
+
+
 def _build_callbacks_from_tracer(
     tracer_config: Dict[str, Any],
     *,
@@ -86,79 +159,104 @@ def _build_callbacks_from_tracer(
     langfuse_secret_key: Optional[str] = None,
     langsmith_api_key: Optional[str] = None,
     langsmith_project: Optional[str] = None,
+    langsmith_endpoint: Optional[str] = None,
     strict: bool = False,
-) -> Tuple[Any, ...]:
+) -> List[Any]:
     """
-    Return a tuple of callback handlers.
+    Return a list of callback handlers.
 
-    Philosophy:
-    - If provider is 'none' => ()
-    - For langfuse/langsmith: configure from explicit args or env vars.
-    - If missing config and strict=False => () (soft-fail)
+    Philosophy (per your requirement):
+    - No environment variable mutation. Ever.
+    - If provider is 'none' => []
+    - If missing config and strict=False => [] (soft-fail)
     - If missing config and strict=True => raise RuntimeError
     """
     provider = tracer_config.get("TRACER_PROVIDER", "none")
 
     if provider == "none":
-        return ()
+        return []
 
     if provider == "langfuse":
-        host = langfuse_host or os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL")
-        pub = langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
-        sec = langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
+        # Allow explicit overrides OR rely on user env vars; do not set env vars ourselves.
+        host = langfuse_host or _get_first_env("LANGFUSE_HOST", "LANGFUSE_BASE_URL")
+        pub = langfuse_public_key or _get_first_env("LANGFUSE_PUBLIC_KEY")
+        sec = langfuse_secret_key or _get_first_env("LANGFUSE_SECRET_KEY")
 
+        # If any of host/pub/sec are missing, we soft-fail or raise depending on strict.
         if not host or not pub or not sec:
             if strict:
                 raise RuntimeError(
-                    "Langfuse selected but LANGFUSE_HOST/LANGFUSE_BASE_URL, "
-                    "LANGFUSE_PUBLIC_KEY, or LANGFUSE_SECRET_KEY missing."
+                    "Langfuse selected but credentials missing. "
+                    "Set LANGFUSE_HOST/LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY "
+                    "in your environment (e.g. .env) or pass explicit overrides."
                 )
-            return ()
+            return []
 
-        # Ensure env vars exist for the handler/client (CallbackHandler reads env vars)
-        os.environ.setdefault("LANGFUSE_HOST", host)
-        os.environ.setdefault("LANGFUSE_PUBLIC_KEY", pub)
-        os.environ.setdefault("LANGFUSE_SECRET_KEY", sec)
+        # Initialize client without env mutation; supported via constructor args.
+        ok = _init_langfuse_client(host=host, public_key=pub, secret_key=sec, strict=strict)
+        if not ok:
+            return []
 
         try:
-            # Correct Langfuse LangChain integration import
             from langfuse.langchain import CallbackHandler  # type: ignore
         except Exception as e:
             if strict:
                 raise RuntimeError(
                     "Langfuse selected but could not import langfuse.langchain.CallbackHandler."
                 ) from e
-            return ()
+            return []
 
-        return (CallbackHandler(),)
-   
+        # NOTE: Return as a list (NOT a tuple) to avoid tuple-related issues in some stacks.
+        return [CallbackHandler()]
+
     if provider == "langsmith":
-        # Many setups rely on env vars + LangChain internal tracing; no explicit callback needed.
-        api_key = langsmith_api_key or os.getenv("LANGCHAIN_API_KEY")
-        project = (
-            langsmith_project
-            or os.getenv("LANGCHAIN_PROJECT")
-            or os.getenv("LANGSMITH_PROJECT")
-        )
+        # Prefer LANGSMITH_* and fall back to LANGCHAIN_* (SDK compatibility behavior).
+        api_key = langsmith_api_key or _get_first_env("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY")
+        project = langsmith_project or _get_first_env("LANGSMITH_PROJECT", "LANGCHAIN_PROJECT")
+        endpoint = langsmith_endpoint or _get_first_env("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT")
 
         if not api_key:
             if strict:
-                raise RuntimeError("LangSmith selected but LANGCHAIN_API_KEY missing.")
-            return ()
+                raise RuntimeError(
+                    "LangSmith selected but neither LANGSMITH_API_KEY nor LANGCHAIN_API_KEY is set."
+                )
+            return []
 
-        # LangChain typically reads these environment variables
-        os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-        os.environ.setdefault("LANGCHAIN_API_KEY", api_key)
-        if project:
-            os.environ.setdefault("LANGCHAIN_PROJECT", project)
+        LangChainTracer = _import_langchain_tracer()
+        if LangChainTracer is None:
+            if strict:
+                raise RuntimeError(
+                    "LangSmith selected but could not import LangChainTracer."
+                )
+            return []
 
-        # Returning empty tuple is fine: tracing is enabled via env vars
-        return ()
+        # Create tracer explicitly (no env toggles). LangSmith supports programmatic configuration.
+        try:
+            tracer = LangChainTracer(project_name=project) if project else LangChainTracer()
+        except TypeError:
+            tracer = LangChainTracer()
 
-    # Unknown tracer provider
+        # Best-effort: wire a LangSmith Client explicitly (no env dependency).
+        # If the tracer exposes .client, set it. Otherwise we still return the tracer.
+        try:
+            from langsmith import Client  # type: ignore
+
+            client_kwargs: Dict[str, Any] = {"api_key": api_key}
+            if endpoint:
+                client_kwargs["api_url"] = endpoint
+            client = Client(**client_kwargs)
+
+            if hasattr(tracer, "client"):
+                setattr(tracer, "client", client)
+        except Exception:
+            pass
+
+        # Return as list (NOT tuple)
+        return [tracer]
+
     if strict:
         raise RuntimeError(f"Unknown TRACER_PROVIDER: {provider!r}")
-    return ()
+    return []
 
 
 def resolve_config(
@@ -173,6 +271,7 @@ def resolve_config(
     langfuse_secret_key: Optional[str] = None,
     langsmith_api_key: Optional[str] = None,
     langsmith_project: Optional[str] = None,
+    langsmith_endpoint: Optional[str] = None,
     strict_tracing: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -191,7 +290,6 @@ def resolve_config(
     config_llm = _clone(LLM_PRESETS[llm_preset_id])
     tracer_cfg = _clone(TRACER_PRESETS[tracer_preset_id])
 
-    # Inject secrets as needed
     _inject_openai_key(config_llm, openai_api_key)
 
     callbacks = _build_callbacks_from_tracer(
@@ -201,6 +299,7 @@ def resolve_config(
         langfuse_secret_key=langfuse_secret_key,
         langsmith_api_key=langsmith_api_key,
         langsmith_project=langsmith_project,
+        langsmith_endpoint=langsmith_endpoint,
         strict=strict_tracing,
     )
 
