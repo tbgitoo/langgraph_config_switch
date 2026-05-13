@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "langgraph-config-switch"
+version = "0.1.0"
+description = "Minimal dict-based LLM config switch + runtime builder (Ollama/OpenAI) for LangGraph/LangChain"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "Thomas Braschler", email = "thomas.braschler@gmail.com" }]
+maintainers = [{ name = "Thomas Braschler", email = "thomas.braschler@gmail.com" }]
+dependencies = [
+  "langchain-community>=0.3.0",
+  "langchain-openai>=0.2.0",
+]
+
+classifiers = [
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.urls]
+Repository = "https://github.com/<YOUR_GITHUB_ORG_OR_USER>/langgraph_config_switch"
+Issues = "https://github.com/<YOUR_GITHUB_ORG_OR_USER>/langgraph_config_switch/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
