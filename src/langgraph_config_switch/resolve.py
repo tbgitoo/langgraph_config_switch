@@ -27,7 +27,9 @@ def _get_first_env(*names: str) -> Optional[str]:
         if v:
             return v
     for n in names:
-       
+       v = read_colab_userdata_or_env(n)
+       if v:
+           return v
     return None
 
 
