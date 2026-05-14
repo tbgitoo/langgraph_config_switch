@@ -202,14 +202,11 @@ def _build_callbacks_from_tracer(
     - If missing config and strict=True => raise RuntimeError
     """
     
-    print("hello")
-    
     provider = tracer_config.get("TRACER_PROVIDER", "none")
 
     if provider == "none":
         return []
-        
-    print("still here")    
+           
 
     if provider == "langfuse":
         # Allow explicit overrides OR rely on user env vars; do not set env vars ourselves.
@@ -251,7 +248,7 @@ def _build_callbacks_from_tracer(
         endpoint = langsmith_endpoint or _get_first_env("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT")
 
         
-        print(api_key)
+        
         
         if not api_key:
             msg = (
@@ -259,7 +256,6 @@ def _build_callbacks_from_tracer(
                 "(LANGSMITH_API_KEY or LANGCHAIN_API_KEY). "
                 "Tracing will be disabled, but execution will continue."
             )
-            print("I got here")
             if strict:
                 raise RuntimeError(msg)
             warnings.warn(msg, RuntimeWarning)
