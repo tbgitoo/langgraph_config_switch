@@ -65,13 +65,28 @@ def _resolve_tracer_preset_id(tracer: Optional[str], profile: str) -> str:
     raise ValueError(f"Unknown tracer switch/preset: {tracer!r}")
 
 
-def _inject_openai_key(config_llm: Dict[str, Any], openai_api_key: Optional[str]) -> None:
+import os
+import warnings
+from typing import Any, Dict, Optional
+
+
+def _inject_openai_key(
+    config_llm: Dict[str, Any],
+    openai_api_key: Optional[str],
+    *,
+    strict: bool = False,
+) -> None:
     """
     Ensure OPENAI_API_KEY exists when provider=openai.
+
     Preference order:
       1) already in config_llm (non-empty)
       2) openai_api_key argument
       3) environment variable OPENAI_API_KEY
+
+    Behavior:
+      - strict=False (default): warn if missing, do NOT raise
+      - strict=True: raise RuntimeError if missing
     """
     if config_llm.get("LLM_PROVIDER") != "openai":
         return
@@ -81,9 +96,16 @@ def _inject_openai_key(config_llm: Dict[str, Any], openai_api_key: Optional[str]
 
     key = openai_api_key or os.getenv("OPENAI_API_KEY")
     if not key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is required for LLM_PROVIDER='openai' but was not provided."
+        msg = (
+            "OPENAI_API_KEY is missing for LLM_PROVIDER='openai'. "
+            "This is acceptable for local / Ollama workflows, but execution "
+            "will fail if an OpenAI-backed model is actually invoked."
         )
+        if strict:
+            raise RuntimeError(msg)
+        warnings.warn(msg, RuntimeWarning)
+        return
+
     config_llm["OPENAI_API_KEY"] = key
 
 
@@ -273,6 +295,7 @@ def resolve_config(
     langsmith_project: Optional[str] = None,
     langsmith_endpoint: Optional[str] = None,
     strict_tracing: bool = False,
+    strict_openai_key: bool = False
 ) -> Dict[str, Any]:
     """
     Resolve simple string switches into:
@@ -290,7 +313,7 @@ def resolve_config(
     config_llm = _clone(LLM_PRESETS[llm_preset_id])
     tracer_cfg = _clone(TRACER_PRESETS[tracer_preset_id])
 
-    _inject_openai_key(config_llm, openai_api_key)
+    _inject_openai_key(config_llm, openai_api_key, strict=strict_openai_key)
 
     callbacks = _build_callbacks_from_tracer(
         tracer_cfg,
