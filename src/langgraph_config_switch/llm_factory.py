@@ -47,7 +47,7 @@ def get_llm(
     if provider == "openai":
         for k in ("OPENAI_MODEL", "OPENAI_API_KEY"):
             if k not in config:
-                raise KeyError(f"Missing required key for openai: {k}")
+                raise RuntimeError(f"Missing required OpenAI config key: {k}")
 
         return ChatOpenAI(
             model=config["OPENAI_MODEL"],
