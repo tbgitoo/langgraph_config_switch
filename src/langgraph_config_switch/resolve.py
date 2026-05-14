@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional, Tuple
 
+import warnings
+
 from .presets import (
     LLM_PRESETS,
     TRACER_PRESETS,
@@ -10,6 +12,8 @@ from .presets import (
     TRACER_ALIASES,
     PROFILE_DEFAULTS,
 )
+
+from .secrets import read_colab_userdata_or_env
 
 
 def _clone(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -22,6 +26,8 @@ def _get_first_env(*names: str) -> Optional[str]:
         v = os.getenv(n)
         if v:
             return v
+    for n in names:
+       
     return None
 
 
@@ -193,10 +199,15 @@ def _build_callbacks_from_tracer(
     - If missing config and strict=False => [] (soft-fail)
     - If missing config and strict=True => raise RuntimeError
     """
+    
+    print("hello")
+    
     provider = tracer_config.get("TRACER_PROVIDER", "none")
 
     if provider == "none":
         return []
+        
+    print("still here")    
 
     if provider == "langfuse":
         # Allow explicit overrides OR rely on user env vars; do not set env vars ourselves.
@@ -237,11 +248,19 @@ def _build_callbacks_from_tracer(
         project = langsmith_project or _get_first_env("LANGSMITH_PROJECT", "LANGCHAIN_PROJECT")
         endpoint = langsmith_endpoint or _get_first_env("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT")
 
+        
+        print(api_key)
+        
         if not api_key:
+            msg = (
+                "LangSmith tracing was requested, but no API key was found "
+                "(LANGSMITH_API_KEY or LANGCHAIN_API_KEY). "
+                "Tracing will be disabled, but execution will continue."
+            )
+            print("I got here")
             if strict:
-                raise RuntimeError(
-                    "LangSmith selected but neither LANGSMITH_API_KEY nor LANGCHAIN_API_KEY is set."
-                )
+                raise RuntimeError(msg)
+            warnings.warn(msg, RuntimeWarning)
             return []
 
         LangChainTracer = _import_langchain_tracer()
