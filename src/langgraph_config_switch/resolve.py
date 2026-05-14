@@ -310,7 +310,7 @@ def resolve_config(
     langfuse_secret_key: Optional[str] = None,
     langsmith_api_key: Optional[str] = None,
     langsmith_project: Optional[str] = None,
-    langsmith_endpoint: Optional[str] = None,
+    langsmith_endpoint: Optional[str] = "https://eu.api.smith.langchain.com",
     strict_tracing: bool = False,
     strict_openai_key: bool = False
 ) -> Dict[str, Any]:
